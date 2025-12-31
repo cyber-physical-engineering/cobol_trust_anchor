@@ -1,0 +1,45 @@
+###############################################################################
+# GitHub Actions - COBOL Trust Anchor Build & Test
+# 
+# Validates the Docker build and runs the trust anchor demonstration.
+# This proves the code compiles and executes correctly on every push.
+###############################################################################
+
+name: Build & Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build Docker image
+      run: docker build -t cobol-trust-anchor .
+
+    - name: Run Trust Anchor Demo
+      run: |
+        docker run --rm cobol-trust-anchor | tee output.txt
+        
+    - name: Verify output contains hash
+      run: |
+        grep -q "HASH:" output.txt && echo "✅ SHA-256 hash generated successfully"
+        grep -q "TRUST ANCHOR CREATED" output.txt && echo "✅ Trust anchor creation verified"
+        grep -q "Trust anchor secured" output.txt && echo "✅ Execution completed successfully"
+
+    - name: Upload demo output
+      uses: actions/upload-artifact@v4
+      with:
+        name: demo-output
+        path: output.txt
+

@@ -4,9 +4,11 @@
 
 A proof-of-concept demonstrating **Zero Trust security for legacy mainframe systems**. This project bridges **COBOL-85** transaction processing with **SHA-256 cryptographic anchoring**—without rewriting the core business logic.
 
+[![Build & Test](https://github.com/BigDataPlumbing/cobol_trust_anchor/actions/workflows/build.yml/badge.svg)](https://github.com/BigDataPlumbing/cobol_trust_anchor/actions/workflows/build.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![COBOL](https://img.shields.io/badge/COBOL-85-green.svg)]()
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)]()
+[![Security Policy](https://img.shields.io/badge/Security-Policy-blueviolet.svg)](SECURITY.md)
 
 ---
 
@@ -96,13 +98,18 @@ docker run --rm cobol-trust-anchor
 
 ```
 cobol_trust_anchor/
-├── anchor.cbl      # COBOL transaction processor
-├── hasher.c        # C-interop SHA-256 bridge
-├── Dockerfile      # Multi-stage build
-├── Makefile        # Local development build
-├── README.md       # Documentation
-├── LICENSE         # MIT License
-└── .gitignore      # Build artifacts
+├── anchor.cbl          # COBOL transaction processor
+├── hasher.c            # C-interop SHA-256 bridge
+├── Dockerfile          # Multi-stage build
+├── Makefile            # Local development build
+├── verify.py           # Python verification tool
+├── README.md           # Documentation
+├── SECURITY.md         # Security policy
+├── CONTRIBUTING.md     # Contribution guidelines
+├── LICENSE             # MIT License
+└── .github/
+    └── workflows/
+        └── build.yml   # CI/CD pipeline
 ```
 
 ---
@@ -178,15 +185,30 @@ This is a **proof-of-concept**. Production deployment would require:
 
 ---
 
-## 🧪 Testing
+## 🧪 Testing & Verification
 
-To verify the cryptographic integrity:
+### Automated CI/CD
+
+Every push triggers automated builds via GitHub Actions. The workflow:
+1. Builds the Docker image
+2. Runs the trust anchor demo
+3. Verifies hash output is generated
+
+### Manual Verification
+
+Use the included Python verification tool:
 
 ```bash
-# Run the program
-docker run --rm -v $(pwd)/output:/app/output cobol-trust-anchor
+# Run the program and capture output
+docker run --rm cobol-trust-anchor
 
-# Verify hash (example with openssl)
+# Or use the verification script
+python3 verify.py immutable_log.txt
+```
+
+### Verify with OpenSSL (manual)
+
+```bash
 echo -n "TXN-20251231|2025-12-31T14:30:00.000Z|ACCT-7892-0001|ACCT-4451-0099|15000.00USD|WIRE TRANSFER - VERIFIED" | \
   openssl dgst -sha256 -hex
 ```
