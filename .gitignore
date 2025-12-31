@@ -1,0 +1,32 @@
+# Build artifacts
+*.o
+*.so
+*.a
+trust-anchor
+*.exe
+
+# COBOL intermediate files
+*.c
+*.h
+*.i
+*.lst
+*.sym
+
+# Log files
+immutable_log.txt
+*.log
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Docker
+.dockerignore
+
