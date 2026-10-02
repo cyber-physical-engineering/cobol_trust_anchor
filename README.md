@@ -1,241 +1,87 @@
-# 🔐 COBOL Trust Anchor
+# COBOL Trust Anchor
 
-> **"70% of the world's financial transactions run on COBOL. None of them are cryptographically anchored."**
+A proof of concept. A COBOL program builds one fixed-width bank-transfer record, hashes it with SHA-256 through a C function, and writes the record and its hash to a log. A Python script recomputes the hash to check the log.
 
-A proof-of-concept demonstrating **Zero Trust security for legacy mainframe systems**. This project bridges **COBOL-85** transaction processing with **SHA-256 cryptographic anchoring**—without rewriting the core business logic.
+**Status: prototype.** Built and run with GnuCOBOL 3.2 and OpenSSL 3 (October 2026). The program prints the record's SHA-256, `verify.py` reports 1 of 1 entries verified, and a copy of the log with one word changed fails.
 
-[![Build & Test](https://github.com/BigDataPlumbing/cobol_trust_anchor/actions/workflows/build.yml/badge.svg)](https://github.com/BigDataPlumbing/cobol_trust_anchor/actions/workflows/build.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![COBOL](https://img.shields.io/badge/COBOL-85-green.svg)]()
-[![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)]()
-[![Security Policy](https://img.shields.io/badge/Security-Policy-blueviolet.svg)](SECURITY.md)
+James Thornton set the architecture and requirements. The code was written with AI-assisted development in late 2025. The tests and checks were re-run in October 2026.
 
----
+## What it does
 
-## 🎯 The Problem
+1. `anchor.cbl` fills a 115-byte transaction record. The layout is below.
+2. It calls `CalculateSHA256` in `hasher.c`, which hashes the record with OpenSSL's SHA-256 and returns 64 hex characters.
+3. It prints the hash and writes one line to `anchor_log.txt`: the record, a `|`, and the hash.
+4. `verify.py` reads the log, recomputes each hash and prints VERIFIED or MISMATCH for each line.
 
-Legacy mainframe systems process **trillions of dollars daily** in banking, healthcare claims, and insurance. These systems were designed before cybersecurity existed as a discipline. A sophisticated attacker with root access can:
+COBOL has no hash function of its own, so the hash lives in C. The record layout stays COBOL's.
 
-- **Modify transaction logs** retroactively
-- **Erase evidence** of fraudulent transfers  
-- **Falsify audit trails** to hide intrusion
+### Record layout
 
-Traditional security (firewalls, access controls) cannot detect post-compromise tampering of historical records.
+| Field | Picture | Bytes |
+|---|---|---|
+| Transaction ID | `X(12)` | 12 |
+| Timestamp | `X(26)` | 26 |
+| From account | `X(16)` | 16 |
+| To account | `X(16)` | 16 |
+| Amount | `9(10)V99` | 12 |
+| Currency | `X(3)` | 3 |
+| Memo | `X(30)` | 30 |
 
----
+Total: 115 bytes. The C side drops trailing spaces before hashing, and `verify.py` does the same.
 
-## 💡 The Solution: Cryptographic Trust Anchors
+## Quick start
 
-Instead of the **risky and expensive** approach of rewriting core banking systems, we inject a **lightweight trust anchor sidecar** that:
-
-1. **Intercepts** each transaction record
-2. **Computes** a SHA-256 cryptographic hash
-3. **Writes** the hash to an append-only immutable log
-
-Even if an attacker gains root access to the mainframe, they **cannot alter historical ledgers** without breaking the cryptographic chain. Auditors can verify integrity by recomputing hashes.
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    LEGACY MAINFRAME                             │
-│  ┌──────────────┐    ┌───────────────────┐    ┌──────────────┐ │
-│  │   COBOL      │───▶│  C CRYPTO BRIDGE  │───▶│  IMMUTABLE   │ │
-│  │  TRANSACTION │    │    (SHA-256)      │    │     LOG      │ │
-│  │   RECORDS    │    │                   │    │              │ │
-│  └──────────────┘    └───────────────────┘    └──────────────┘ │
-│        ▲                                             │         │
-│        │              ZERO TRUST ANCHOR              ▼         │
-│   [VSAM/DB2]                                   [AUDIT CHAIN]   │
-└─────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 🚀 Quick Start
-
-### Prerequisites
-- Docker installed on your system
-
-### Run the Demo
+With Docker:
 
 ```bash
-# Clone the repository
-git clone https://github.com/BigDataPlumbing/cobol_trust_anchor.git
-cd cobol_trust_anchor
-
-# Build and run
 docker build -t cobol-trust-anchor .
 docker run --rm cobol-trust-anchor
 ```
 
-### Expected Output
+Without Docker, with GnuCOBOL, the OpenSSL headers and gcc installed:
+
+```bash
+make
+./trust-anchor
+python3 verify.py anchor_log.txt
+```
+
+The run prints the record's hash:
 
 ```
-==================================================
-  COBOL TRUST ANCHOR - Zero Trust for Mainframes
-  Big Data Plumbing / HealthSec Alliance
-==================================================
-
-[MAINFRAME] Loading transaction from VSAM...
-[MAINFRAME] Transaction loaded: TXN-20251231
-[BRIDGE] Invoking SHA-256 cryptographic engine...
-[CRYPTO] SHA-256 Hash Generated
-
 =============================================
   TRUST ANCHOR CREATED
 =============================================
   TX-ID:  TXN-20251231
   AMOUNT: $0000015000.00 USD
-  HASH:   a3f2b8c9e1d4f6a8b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5
+  HASH:   eb9444ab8932c736f41bedd70ed29c630cc6d4c0463cd0cd9f940f0e94208915
 =============================================
-
-[ANCHOR] Record written to immutable_log.txt
-[COMPLETE] Trust anchor secured.
 ```
 
----
-
-## 📁 Project Structure
-
-```
-cobol_trust_anchor/
-├── anchor.cbl          # COBOL transaction processor
-├── hasher.c            # C-interop SHA-256 bridge
-├── Dockerfile          # Multi-stage build
-├── Makefile            # Local development build
-├── verify.py           # Python verification tool
-├── README.md           # Documentation
-├── SECURITY.md         # Security policy
-├── CONTRIBUTING.md     # Contribution guidelines
-├── LICENSE             # MIT License
-└── .github/
-    └── workflows/
-        └── build.yml   # CI/CD pipeline
-```
-
----
-
-## 🏗️ Architecture Deep Dive
-
-### Why C-Interop?
-
-COBOL lacks native cryptographic primitives. GnuCOBOL's C-interop capability allows us to:
-
-1. Keep the COBOL business logic **unchanged** (no regression risk)
-2. Leverage battle-tested OpenSSL for cryptography
-3. Maintain the **COBOL-as-source-of-truth** paradigm that regulated industries require
-
-### The Hash Chain
-
-Each log entry contains:
-```
-TIMESTAMP | TX-ID | FROM-ACCT | TO-ACCT | AMOUNT | SHA-256-HASH
-```
-
-For production deployment, the hash would include the **previous record's hash**, creating an unbreakable chain (similar to blockchain, but for a single-source ledger).
-
-### Local Development (Without Docker)
-
-If you have GnuCOBOL installed locally:
+That hash is the SHA-256 of the record, checked independently in Python. To check it yourself:
 
 ```bash
-# Install dependencies (Debian/Ubuntu)
-sudo apt-get install gnucobol libssl-dev gcc
-
-# Compile
-make
-
-# Run
-./trust-anchor
+python3 -c "import hashlib; r = 'TXN-20251231' + '2025-12-31T14:30:00.000Z'.ljust(26) + 'ACCT-7892-0001'.ljust(16) + 'ACCT-4451-0099'.ljust(16) + '000001500000' + 'USD' + 'WIRE TRANSFER - VERIFIED'; print(hashlib.sha256(r.encode()).hexdigest())"
 ```
 
----
+## How it works
 
-## 🏥 Industry Applications
+`anchor.cbl` passes three things to C by reference: the record, its length, and a 64-byte output field. The length field is `PIC S9(9) COMP-5`, a native 4-byte integer that matches the C `int`. `hasher.c` writes exactly 64 bytes and returns 0 or 1, which COBOL reads in `RETURN-CODE`. A non-zero return stops the program.
 
-| Industry | Legacy System | Use Case |
-|----------|--------------|----------|
-| **Banking** | COBOL/CICS/DB2 | Wire transfer integrity verification |
-| **Healthcare** | MUMPS/Epic | HIPAA audit log protection |
-| **Insurance** | AS/400 COBOL | Claims processing tamper detection |
-| **Government** | Legacy batch systems | Compliance audit trails |
+`verify.py` splits each line at the last `|`, hashes the record the same way, and compares. It exits 0 only when every entry matches, and 1 for a mismatch, a malformed line, or a missing or empty file.
 
----
+## What it is not
 
-## 🛡️ Compliance Alignment
+- There is no chaining. Each line stands alone; nothing ties a record to the one before it.
+- There is no key. Anyone who can rewrite the record can rewrite its hash to match. A real version needs chaining plus a signature or an outside anchor.
+- `anchor_log.txt` is an ordinary file. Nothing makes it append-only.
+- The mainframe is simulated. One record is built in `WORKING-STORAGE`; nothing reads VSAM or hooks CICS.
+- Nothing here meets any regulation. It shows one mechanism: a hash a reviewer can recompute.
 
-This pattern supports:
+## CI
 
-- **HIPAA** - Audit log integrity requirements
-- **PCI-DSS** - Requirement 10 (track access to cardholder data)  
-- **SOX** - Financial record integrity
-- **NIST Zero Trust** - "Never trust, always verify" for legacy systems
+On every push the workflow builds the Docker image, runs the demo, and runs `verify.py` on the log it wrote. It then changes one word in a copy of the log and requires `verify.py` to fail.
 
----
+## License
 
-## 🔧 Production Considerations
-
-This is a **proof-of-concept**. Production deployment would require:
-
-- [ ] Hardware Security Module (HSM) integration for key management
-- [ ] Append-only storage (WORM drives or blockchain anchoring)
-- [ ] Real-time transaction interception (CICS exit points)
-- [ ] Hash chaining (include previous hash in current calculation)
-- [ ] External timestamp authority (RFC 3161)
-- [ ] Performance optimization for high-volume transaction streams
-
----
-
-## 🧪 Testing & Verification
-
-### Automated CI/CD
-
-Every push triggers automated builds via GitHub Actions. The workflow:
-1. Builds the Docker image
-2. Runs the trust anchor demo
-3. Verifies hash output is generated
-
-### Manual Verification
-
-Use the included Python verification tool:
-
-```bash
-# Run the program and capture output
-docker run --rm cobol-trust-anchor
-
-# Or use the verification script
-python3 verify.py immutable_log.txt
-```
-
-### Verify with OpenSSL (manual)
-
-```bash
-echo -n "TXN-20251231|2025-12-31T14:30:00.000Z|ACCT-7892-0001|ACCT-4451-0099|15000.00USD|WIRE TRANSFER - VERIFIED" | \
-  openssl dgst -sha256 -hex
-```
-
----
-
-## 👥 About
-
-**Big Data Plumbing** specializes in bridging legacy infrastructure with modern security requirements. We do the "Deep Plumbing" that connects 1980s mainframes to 2026 Zero Trust architectures.
-
-**HealthSec Alliance** focuses on securing healthcare data systems, from legacy MUMPS installations to modern FHIR APIs.
-
----
-
-## 📄 License
-
-MIT License - See [LICENSE](LICENSE) for details.
-
----
-
-## 🤝 Contributing
-
-This is a showcase project demonstrating architectural patterns. For production implementations, please contact [Big Data Plumbing](https://github.com/BigDataPlumbing).
-
----
-
-<p align="center">
-  <i>"We don't rewrite your mainframe. We secure it."</i>
-</p>
-
+MIT. See [LICENSE](LICENSE).
