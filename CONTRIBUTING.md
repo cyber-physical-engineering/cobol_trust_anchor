@@ -1,70 +1,35 @@
-# Contributing to COBOL Trust Anchor
+# Contributing
 
-Thank you for your interest in contributing to COBOL Trust Anchor! This project demonstrates cryptographic security patterns for legacy mainframe systems.
+This is a prototype. Issues and pull requests are welcome. There is no release schedule and no promised response time.
 
-## Ways to Contribute
+## Build and test
 
-### 🐛 Bug Reports
+With Docker:
 
-If you find a bug, please open an issue with:
-- Clear description of the problem
-- Steps to reproduce
-- Expected vs. actual behavior
-- Environment details (OS, Docker version, etc.)
-
-### 💡 Feature Requests
-
-We welcome ideas for extending this demonstration:
-- Additional hash algorithms (SHA-3, BLAKE3)
-- Hash chaining implementation
-- Alternative legacy language bridges (MUMPS, PL/I)
-- Integration patterns for specific mainframe platforms
-
-### 🔧 Code Contributions
-
-1. **Fork** the repository
-2. **Create** a feature branch (`git checkout -b feature/amazing-feature`)
-3. **Commit** your changes (`git commit -m 'Add amazing feature'`)
-4. **Push** to the branch (`git push origin feature/amazing-feature`)
-5. **Open** a Pull Request
-
-### Code Style
-
-- **COBOL**: Follow IBM Enterprise COBOL style guidelines
-- **C**: Use K&R style with 4-space indentation
-- **Comments**: Clear, professional documentation
-
-### Testing
-
-Before submitting:
 ```bash
-# Build and run locally
 docker build -t cobol-trust-anchor .
 docker run --rm cobol-trust-anchor
 ```
 
-## Development Setup
+Without Docker, with GnuCOBOL, the OpenSSL headers and gcc installed:
 
-### Prerequisites
-- Docker (recommended)
-- OR: GnuCOBOL + libssl-dev + gcc (for local development)
-
-### Local Build (Without Docker)
 ```bash
-# Debian/Ubuntu
-sudo apt-get install gnucobol libssl-dev gcc
 make
 ./trust-anchor
+python3 verify.py anchor_log.txt
 ```
 
-## Questions?
+A changed log must fail: copy `anchor_log.txt`, edit one character, and run `verify.py` on the copy. CI does the same.
 
-For questions about:
-- **This demo**: Open a GitHub issue
-- **Production implementations**: Contact Big Data Plumbing
-- **Security concerns**: See [SECURITY.md](SECURITY.md)
+## Before you open a pull request
 
----
+1. Run the steps above.
+2. Keep the change small and say what it fixes.
+3. Keep COBOL comments inside column 72 and the C bridge warning-free with `-Wall -Wextra`.
+4. If the change removes a limit listed in the README, update that section.
 
-*Big Data Plumbing / HealthSec Alliance*
+## Ideas that fit
 
+- Chain the records: include the previous hash in each new hash.
+- Sign the log or anchor the newest hash somewhere the writer cannot reach.
+- Read records from a file instead of building one in `WORKING-STORAGE`.
