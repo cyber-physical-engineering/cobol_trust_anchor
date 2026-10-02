@@ -1,145 +1,82 @@
 #!/usr/bin/env python3
 """
-verify.py - Trust Anchor Verification Tool
+verify.py - check the trust anchor log written by anchor.cbl
 
-Big Data Plumbing / HealthSec Alliance
-
-This script demonstrates cross-language verification of the immutable log.
-Auditors can use this to independently verify that transaction records
-have not been tampered with since the trust anchor was created.
+Each line of anchor_log.txt is the fixed-width transaction record that
+anchor.cbl hashed, a "|" separator, and the 64-character SHA-256 hex digest.
+This script recomputes the digest the same way hasher.c does (record bytes,
+trailing spaces removed) and compares it with the stored one.
 
 Usage:
-    python3 verify.py immutable_log.txt
+    python3 verify.py anchor_log.txt
 
-The script:
-1. Reads each log entry
-2. Extracts the transaction data and stored hash
-3. Recomputes the SHA-256 hash
-4. Compares and reports integrity status
+Exit status: 0 if every entry matches, 1 if any entry is changed, malformed,
+or the file is missing or empty.
 """
 
-import sys
 import hashlib
+import re
+import sys
 from pathlib import Path
 
-
-def parse_log_entry(line: str) -> tuple[str, str]:
-    """
-    Parse a log entry and extract transaction data and hash.
-    
-    Log format: TIMESTAMP|TX-ID|FROM-ACCT|TO-ACCT|AMOUNT|HASH
-    
-    Returns:
-        tuple: (transaction_data, stored_hash)
-    """
-    parts = line.strip().split('|')
-    if len(parts) < 6:
-        raise ValueError(f"Invalid log format: expected 6 fields, got {len(parts)}")
-    
-    # The hash is the last field
-    stored_hash = parts[-1].lower()
-    
-    # Reconstruct transaction data (everything except the hash)
-    # This should match what COBOL hashed
-    transaction_data = '|'.join(parts[:-1])
-    
-    return transaction_data, stored_hash
+HEX_DIGEST = re.compile(r"^[0-9a-f]{64}$")
 
 
-def compute_hash(data: str) -> str:
-    """
-    Compute SHA-256 hash of the transaction data.
-    
-    Note: COBOL pads fields with spaces and trims before hashing.
-    This verification assumes the log contains trimmed data.
-    """
-    return hashlib.sha256(data.encode('utf-8')).hexdigest()
+def parse_entry(line):
+    """Split one log line into (record, stored_digest)."""
+    record, sep, stored = line.rstrip("\r\n").rpartition("|")
+    stored = stored.strip()
+    if not sep or not HEX_DIGEST.match(stored):
+        raise ValueError("expected '<record>|<64 hex digits>'")
+    return record, stored
 
 
-def verify_log(log_path: str) -> bool:
-    """
-    Verify all entries in the immutable log.
-    
-    Returns:
-        bool: True if all entries are valid, False otherwise
-    """
+def compute_digest(record):
+    """SHA-256 of the record without trailing spaces, as hasher.c computes it."""
+    return hashlib.sha256(record.rstrip(" ").encode("ascii")).hexdigest()
+
+
+def verify_log(log_path):
     path = Path(log_path)
-    
     if not path.exists():
-        print(f"❌ Error: Log file not found: {log_path}")
+        print(f"Log file not found: {log_path}")
         return False
-    
-    print("=" * 60)
-    print("  COBOL Trust Anchor - Verification Tool")
-    print("  Big Data Plumbing / HealthSec Alliance")
-    print("=" * 60)
-    print()
-    
-    all_valid = True
-    entry_count = 0
-    
-    with open(path, 'r') as f:
-        for line_num, line in enumerate(f, 1):
-            line = line.strip()
-            if not line:
-                continue
-                
-            entry_count += 1
-            
-            try:
-                tx_data, stored_hash = parse_log_entry(line)
-                computed_hash = compute_hash(tx_data)
-                
-                # Note: The COBOL program hashes the raw record fields,
-                # not the pipe-delimited log format. This is a simplified
-                # verification for demonstration purposes.
-                
-                print(f"Entry #{entry_count} (Line {line_num}):")
-                print(f"  Data: {tx_data[:50]}...")
-                print(f"  Stored Hash:   {stored_hash}")
-                print(f"  Computed Hash: {computed_hash}")
-                
-                # In production, you would verify against the original
-                # transaction record format, not the log format
-                if stored_hash == computed_hash:
-                    print(f"  Status: ✅ VERIFIED")
-                else:
-                    print(f"  Status: ⚠️  HASH MISMATCH (expected - see note)")
-                    print(f"  Note: Log format differs from raw record format")
-                
-                print()
-                
-            except ValueError as e:
-                print(f"Entry #{entry_count} (Line {line_num}):")
-                print(f"  ❌ Parse Error: {e}")
-                all_valid = False
-                print()
-    
-    print("=" * 60)
-    print(f"  Verification Complete: {entry_count} entries processed")
-    print("=" * 60)
-    
-    if entry_count == 0:
-        print("⚠️  Warning: No entries found in log file")
+
+    entries = 0
+    failures = 0
+    for line_number, line in enumerate(path.read_text(encoding="ascii").splitlines(), 1):
+        if not line.strip():
+            continue
+        entries += 1
+        try:
+            record, stored = parse_entry(line)
+        except ValueError as error:
+            print(f"Line {line_number}: MALFORMED ({error})")
+            failures += 1
+            continue
+
+        computed = compute_digest(record)
+        if computed == stored:
+            print(f"Line {line_number}: VERIFIED  {stored}")
+        else:
+            print(f"Line {line_number}: MISMATCH  stored {stored}")
+            print(f"{'':10}            computed {computed}")
+            failures += 1
+
+    if entries == 0:
+        print("No entries found.")
         return False
-    
-    return all_valid
+
+    print(f"{entries - failures} of {entries} entries verified.")
+    return failures == 0
 
 
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: python3 verify.py <immutable_log.txt>")
-        print()
-        print("Example:")
-        print("  docker run --rm -v $(pwd):/app/output cobol-trust-anchor")
-        print("  python3 verify.py immutable_log.txt")
-        sys.exit(1)
-    
-    log_file = sys.argv[1]
-    success = verify_log(log_file)
-    sys.exit(0 if success else 1)
+    if len(sys.argv) != 2:
+        print("Usage: python3 verify.py <anchor_log.txt>")
+        sys.exit(2)
+    sys.exit(0 if verify_log(sys.argv[1]) else 1)
 
 
 if __name__ == "__main__":
     main()
-

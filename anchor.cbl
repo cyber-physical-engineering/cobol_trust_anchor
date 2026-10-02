@@ -1,17 +1,19 @@
       ******************************************************************
       * PROGRAM:    ANCHOR.CBL
-      * PURPOSE:    Zero Trust Anchor for Legacy Transaction Logs
-      * AUTHOR:     Big Data Plumbing / HealthSec Alliance
-      * DATE:       2025
+      * PURPOSE:    SHA-256 anchor for one COBOL transaction record
+      * AUTHOR:     James Thornton
+      * DATE:       2025, revised 2026
       *
       * DESCRIPTION:
-      *   This program demonstrates cryptographic anchoring of mainframe
-      *   transaction records. Each transaction is hashed using SHA-256
-      *   via C-interop, creating an immutable fingerprint that can
-      *   detect tampering in regulated environments (HIPAA/PCI-DSS).
+      *   A proof of concept. The program builds one fixed-width
+      *   transaction record and calls a C function that hashes it
+      *   with OpenSSL's SHA-256. It prints the hash and writes the
+      *   record and the hash to a log file. verify.py recomputes
+      *   the hash, so a changed record no longer matches it.
+      *   There is no chaining and no key. See README.md for limits.
       *
-      * ARCHITECTURE:
-      *   [COBOL TX Record] --> [C SHA-256 Bridge] --> [Immutable Log]
+      * FLOW:
+      *   [COBOL record] --> [C SHA-256 bridge] --> [anchor_log.txt]
       *
       * USAGE:
       *   cobc -x -o trust-anchor anchor.cbl hasher.o -lssl -lcrypto
@@ -19,18 +21,17 @@
       ******************************************************************
        IDENTIFICATION DIVISION.
        PROGRAM-ID. TRUST-ANCHOR.
-       AUTHOR. BIG-DATA-PLUMBING.
 
        ENVIRONMENT DIVISION.
        INPUT-OUTPUT SECTION.
        FILE-CONTROL.
-           SELECT IMMUTABLE-LOG ASSIGN TO "immutable_log.txt"
+           SELECT ANCHOR-LOG ASSIGN TO "anchor_log.txt"
                ORGANIZATION IS LINE SEQUENTIAL
                FILE STATUS IS WS-FILE-STATUS.
 
        DATA DIVISION.
        FILE SECTION.
-       FD  IMMUTABLE-LOG.
+       FD  ANCHOR-LOG.
        01  LOG-RECORD                    PIC X(200).
 
        WORKING-STORAGE SECTION.
@@ -51,7 +52,7 @@
       * SHA-256 INTERFACE VARIABLES
       ******************************************************************
        01  WS-HASH-INPUT                 PIC X(256).
-       01  WS-HASH-INPUT-LEN             PIC 9(4) COMP VALUE 115.
+       01  WS-HASH-INPUT-LEN             PIC S9(9) COMP-5 VALUE 115.
        01  WS-HASH-OUTPUT                PIC X(64).
 
       ******************************************************************
@@ -76,13 +77,13 @@
       ******************************************************************
        1000-INITIALIZE.
            DISPLAY "=================================================="
-           DISPLAY "  COBOL TRUST ANCHOR - Zero Trust for Mainframes"
-           DISPLAY "  Big Data Plumbing / HealthSec Alliance"
+           DISPLAY "  COBOL TRUST ANCHOR"
+           DISPLAY "  SHA-256 anchor for one COBOL transaction record"
            DISPLAY "=================================================="
            DISPLAY " "
-           OPEN OUTPUT IMMUTABLE-LOG
+           OPEN OUTPUT ANCHOR-LOG
            IF WS-FILE-STATUS NOT = "00"
-               DISPLAY "ERROR: Cannot open immutable log file"
+               DISPLAY "ERROR: Cannot open anchor log file"
                DISPLAY "FILE STATUS: " WS-FILE-STATUS
                STOP RUN
            END-IF.
@@ -91,7 +92,7 @@
       * SIMULATE READING A TRANSACTION FROM CORE BANKING SYSTEM
       ******************************************************************
        2000-LOAD-TRANSACTION.
-           DISPLAY "[MAINFRAME] Loading transaction from VSAM..."
+           DISPLAY "[DEMO] Building a sample transaction record..."
            MOVE "TXN-20251231" TO WS-TX-ID
            MOVE "2025-12-31T14:30:00.000Z" TO WS-TX-TIMESTAMP
            MOVE "ACCT-7892-0001"  TO WS-TX-FROM-ACCOUNT
@@ -99,21 +100,28 @@
            MOVE 15000.00          TO WS-TX-AMOUNT
            MOVE "USD"             TO WS-TX-CURRENCY
            MOVE "WIRE TRANSFER - VERIFIED" TO WS-TX-MEMO
-           DISPLAY "[MAINFRAME] Transaction loaded: " WS-TX-ID.
+           DISPLAY "[DEMO] Record built: " WS-TX-ID.
 
       ******************************************************************
       * CALL C BRIDGE TO CALCULATE SHA-256 HASH
       ******************************************************************
        3000-CALCULATE-HASH.
-           DISPLAY "[BRIDGE] Invoking SHA-256 cryptographic engine..."
+           DISPLAY "[BRIDGE] Calling the C SHA-256 function..."
            MOVE WS-TRANSACTION-RECORD TO WS-HASH-INPUT
 
-           CALL "CalculateSHA256" 
+           CALL "CalculateSHA256"
                USING BY REFERENCE WS-HASH-INPUT
                      BY REFERENCE WS-HASH-INPUT-LEN
                      BY REFERENCE WS-HASH-OUTPUT
+           END-CALL
 
-           DISPLAY "[CRYPTO] SHA-256 Hash Generated"
+           IF RETURN-CODE NOT = 0
+               DISPLAY "[ERROR] SHA-256 bridge failed: " RETURN-CODE
+               CLOSE ANCHOR-LOG
+               STOP RUN
+           END-IF
+
+           DISPLAY "[BRIDGE] SHA-256 returned"
            DISPLAY " "
            DISPLAY "============================================="
            DISPLAY "  TRUST ANCHOR CREATED"
@@ -124,18 +132,11 @@
            DISPLAY "=============================================".
 
       ******************************************************************
-      * WRITE IMMUTABLE LOG ENTRY
+      * WRITE THE LOG ENTRY: RECORD, "|", HASH
       ******************************************************************
        4000-WRITE-ANCHOR.
-           STRING WS-TX-TIMESTAMP DELIMITED SIZE
-                  "|" DELIMITED SIZE
-                  WS-TX-ID DELIMITED SPACE
-                  "|" DELIMITED SIZE
-                  WS-TX-FROM-ACCOUNT DELIMITED SPACE
-                  "|" DELIMITED SIZE
-                  WS-TX-TO-ACCOUNT DELIMITED SPACE
-                  "|" DELIMITED SIZE
-                  WS-TX-AMOUNT DELIMITED SIZE
+           MOVE SPACES TO WS-LOG-OUTPUT
+           STRING WS-TRANSACTION-RECORD DELIMITED SIZE
                   "|" DELIMITED SIZE
                   WS-HASH-OUTPUT DELIMITED SIZE
                INTO WS-LOG-OUTPUT
@@ -144,7 +145,7 @@
            WRITE LOG-RECORD FROM WS-LOG-OUTPUT
            IF WS-FILE-STATUS = "00"
                DISPLAY " "
-               DISPLAY "[ANCHOR] Record written to immutable_log.txt"
+               DISPLAY "[ANCHOR] Record written to anchor_log.txt"
            ELSE
                DISPLAY "[ERROR] Write failed: " WS-FILE-STATUS
            END-IF.
@@ -153,8 +154,8 @@
       * CLEANUP
       ******************************************************************
        9000-TERMINATE.
-           CLOSE IMMUTABLE-LOG
+           CLOSE ANCHOR-LOG
            DISPLAY " "
-           DISPLAY "[COMPLETE] Trust anchor secured."
+           DISPLAY "[COMPLETE] Record and hash written."
            DISPLAY " ".
 

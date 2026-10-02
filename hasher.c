@@ -1,53 +1,50 @@
 /*
- * hasher.c - SHA-256 Bridge for GnuCOBOL
- * 
- * Big Data Plumbing / HealthSec Alliance
- * "Deep Plumbing for Regulated Industries"
+ * hasher.c - SHA-256 bridge for GnuCOBOL
  *
- * This module provides a COBOL-callable SHA-256 hashing function,
- * enabling legacy mainframe applications to generate cryptographic
- * trust anchors without modification to core business logic.
+ * COBOL has no built-in hash function, so anchor.cbl calls this C function.
+ * It hashes the transaction record with OpenSSL's SHA-256 and returns the
+ * digest as 64 lowercase hex characters.
  *
- * Architecture: COBOL Transaction → C Bridge → SHA-256 Hash → Immutable Log
+ * Called from COBOL as:
+ *   CALL "CalculateSHA256" USING BY REFERENCE WS-HASH-INPUT
+ *                                BY REFERENCE WS-HASH-INPUT-LEN
+ *                                BY REFERENCE WS-HASH-OUTPUT
+ *
+ * WS-HASH-INPUT-LEN must be PIC S9(9) COMP-5, a native 4-byte integer that
+ * matches the C int below. WS-HASH-OUTPUT must be PIC X(64). Exactly 64 bytes
+ * are written, with no terminating NUL, so nothing past the field is touched.
+ * Returns 0 on success and 1 on failure; COBOL sees it in RETURN-CODE.
  */
 
 #include <stdio.h>
 #include <string.h>
-#include <openssl/sha.h>
+#include <openssl/evp.h>
 
-/*
- * CalculateSHA256 - COBOL-Interop Entry Point
- *
- * Parameters (passed by reference from COBOL):
- *   input_data   - Pointer to the transaction record (null-terminated or padded)
- *   input_len    - Length of input data
- *   output_hash  - 64-byte buffer for hex-encoded SHA-256 result
- *
- * GnuCOBOL Call Convention:
- *   CALL "CalculateSHA256" USING BY REFERENCE WS-RECORD
- *                                BY REFERENCE WS-RECORD-LEN
- *                                BY REFERENCE WS-HASH-OUTPUT
- */
-void CalculateSHA256(char *input_data, int *input_len, char *output_hash) {
-    unsigned char hash[SHA256_DIGEST_LENGTH];
-    SHA256_CTX sha256;
-    int i;
+int CalculateSHA256(const char *input_data, const int *input_len, char *output_hash) {
+    unsigned char digest[EVP_MAX_MD_SIZE];
+    unsigned int digest_len = 0;
+    char hex[65];
     int len = *input_len;
+    int i;
 
-    /* Trim trailing spaces (COBOL pads fields) */
+    if (len < 0) {
+        return 1;
+    }
+
+    /* COBOL pads fields with spaces. Hash the record without trailing spaces. */
     while (len > 0 && input_data[len - 1] == ' ') {
         len--;
     }
 
-    /* Calculate SHA-256 digest */
-    SHA256_Init(&sha256);
-    SHA256_Update(&sha256, input_data, len);
-    SHA256_Final(hash, &sha256);
-
-    /* Convert to hex string (64 chars) */
-    for (i = 0; i < SHA256_DIGEST_LENGTH; i++) {
-        sprintf(output_hash + (i * 2), "%02x", hash[i]);
+    if (EVP_Digest(input_data, (size_t)len, digest, &digest_len, EVP_sha256(), NULL) != 1
+            || digest_len != 32) {
+        memset(output_hash, '0', 64);
+        return 1;
     }
-    output_hash[64] = '\0';
-}
 
+    for (i = 0; i < 32; i++) {
+        snprintf(hex + (i * 2), 3, "%02x", digest[i]);
+    }
+    memcpy(output_hash, hex, 64);
+    return 0;
+}
