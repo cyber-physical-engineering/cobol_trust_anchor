@@ -4,6 +4,8 @@ A proof of concept. A COBOL program builds one fixed-width bank-transfer record,
 
 **Status: prototype.** Built and run with GnuCOBOL 3.2 and OpenSSL 3 (October 2026). The program prints the record's SHA-256, `verify.py` reports 1 of 1 entries verified, and a copy of the log with one word changed fails.
 
+[![Build & Test](https://github.com/cyber-physical-engineering/cobol_trust_anchor/actions/workflows/build.yml/badge.svg)](https://github.com/cyber-physical-engineering/cobol_trust_anchor/actions/workflows/build.yml)
+
 James Thornton set the architecture and requirements. The code was written with AI-assisted development in late 2025. The tests and checks were re-run in October 2026.
 
 ## What it does
