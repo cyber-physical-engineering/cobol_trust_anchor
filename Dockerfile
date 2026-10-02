@@ -1,17 +1,13 @@
 ###############################################################################
-# COBOL Trust Anchor - Docker Build
-# 
-# Big Data Plumbing / HealthSec Alliance
-# "Bridging 1980s Infrastructure to 2026 Security Standards"
+# COBOL Trust Anchor: Docker build
 #
-# This container compiles and runs a demonstration of cryptographic
-# trust anchoring for legacy COBOL transaction systems.
+# Builds the COBOL program and its C SHA-256 bridge with GnuCOBOL and
+# OpenSSL, then runs the demo in a small runtime image.
 ###############################################################################
 
 FROM debian:bookworm-slim AS builder
 
-LABEL maintainer="Big Data Plumbing <contact@bigdataplumbing.com>"
-LABEL description="Zero Trust Anchor for Legacy Mainframe Systems"
+LABEL description="COBOL Trust Anchor: SHA-256 anchor for one COBOL transaction record (proof of concept)"
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -28,7 +24,7 @@ COPY hasher.c .
 COPY anchor.cbl .
 
 # Compile C bridge as object file
-RUN gcc -c -fPIC hasher.c -o hasher.o -lcrypto
+RUN gcc -c -fPIC -Wall hasher.c -o hasher.o
 
 # Compile COBOL with C linkage
 RUN cobc -x -o trust-anchor anchor.cbl hasher.o -lssl -lcrypto

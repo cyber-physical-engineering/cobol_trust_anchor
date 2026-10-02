@@ -14,7 +14,7 @@ anchor.c
 *.sym
 
 # Log files
-immutable_log.txt
+anchor_log.txt
 *.log
 
 # IDE files

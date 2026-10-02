@@ -1,8 +1,7 @@
 ###############################################################################
 # Makefile for COBOL Trust Anchor
-# 
-# Big Data Plumbing / HealthSec Alliance
-# Local development build (without Docker)
+#
+# Local build without Docker: GnuCOBOL, the OpenSSL headers and gcc.
 ###############################################################################
 
 CC = gcc
@@ -22,7 +21,7 @@ all: $(TARGET)
 
 # Compile C bridge
 $(C_OBJ): $(C_SRC)
-	$(CC) $(CFLAGS) $(C_SRC) -o $(C_OBJ) -lcrypto
+	$(CC) $(CFLAGS) $(C_SRC) -o $(C_OBJ)
 
 # Compile COBOL and link with C
 $(TARGET): $(C_OBJ) $(COB_SRC)
@@ -34,7 +33,7 @@ run: $(TARGET)
 
 # Clean build artifacts
 clean:
-	rm -f $(C_OBJ) $(TARGET) *.c *.h *.i *.lst *.sym immutable_log.txt
+	rm -f $(C_OBJ) $(TARGET) *.i *.lst *.sym anchor_log.txt
 
 # Install dependencies (Debian/Ubuntu)
 install-deps:
